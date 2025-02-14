@@ -99,9 +99,7 @@ class NeedlemanWunsch:
         return dict_sub
 
     def align(self, seqA: str, seqB: str) -> Tuple[float, str, str]:
-        """
-        TODO
-        
+        """        
         This function performs global sequence alignment of two strings
         using the Needleman-Wunsch Algorithm
         
@@ -125,21 +123,54 @@ class NeedlemanWunsch:
         # Initializing sequences for use in backtrace method
         self._seqA = seqA
         self._seqB = seqB
-        
-        # TODO: Initialize matrix private attributes for use in alignment
-        # create matrices for alignment scores, gaps, and backtracing
-        pass
 
-        
-        # TODO: Implement global alignment here
-        pass      		
-        		    
+        # Initialize alignment and gap matrices
+        self._align_matrix = np.zeros([len(seqA) + 1, len(seqB) + 1])
+        self._gapA_matrix = np.zeros([len(seqA) + 1, len(seqB) + 1])
+        self._gapB_matrix = np.zeros([len(seqA) + 1, len(seqB) + 1])
+        for i in range(self._align_matrix.shape[0]):
+            for j in range(self._align_matrix.shape[1]):
+                if i == 0:
+                    # Case: SeqA edge initialization to -inf
+                    self._gapA_matrix[i][j] = -np.inf
+                    self._align_matrix[i][j] = -np.inf
+                else:
+                    # Case: Calculate gap creation/extension score along seqA.
+                    self._gapA_matrix[i][j] = max(
+                        self._align_matrix[i-1][j] + self.gap_open + self.gap_extend,
+                        self._gapA_matrix[i-1][j] + self.gap_extend
+                    )
+                if j == 0:
+                    # Case: SeqB edge initialization to -inf
+                    self._gapB_matrix[i][j] = -np.inf
+                    self._align_matrix[i][j] = -np.inf
+                else:
+                    # Case: Calculate gap creation/extension score along seqB.
+                    self._gapB_matrix[i][j] = max(
+                        self._align_matrix[i][j-1] + self.gap_open + self.gap_extend,
+                        self._gapB_matrix[i][j-1] + self.gap_extend
+                    )
+                if i == 0 and j == 0:
+                    # Special Case: (0,0) should be 0 as an end state.
+                    self._align_matrix[i][j] = 0
+                elif i >= 1 and j >= 1:
+                    # Case: Diagonal calculation of align matrix.
+                    # Use either the sub_dict or default to +1/-1.
+                    key = (seqA[i-1], seqB[j-1])
+                    if key in self.sub_dict:
+                        score = self.sub_dict[key]
+                    else:
+                        print(f"WARNING: key pairing {key} not in sub dict")
+                        score = 1 if seqA[i-1] == seqB[j-1] else -1
+                    self._align_matrix[i][j] = max(
+                        self._align_matrix[i-1][j-1] + score,
+                        self._gapA_matrix[i-1][j-1] + score,
+                        self._gapB_matrix[i-1][j-1] + score,
+                    )
         return self._backtrace()
 
     def _backtrace(self) -> Tuple[float, str, str]:
-        """
-        TODO
-        
+        """        
         This function traces back through the back matrix created with the
         align function in order to return the final alignment score and strings.
         
@@ -150,8 +181,45 @@ class NeedlemanWunsch:
          	(alignment score, seqA alignment, seqB alignment) : Tuple[float, str, str]
          		the score and corresponding strings for the alignment of seqA and seqB
         """
-        pass
 
+        # Easy first step, just find the max align value to report at the end.
+        self.alignment_score = max(
+            self._align_matrix[-1][-1],
+            self._gapA_matrix[-1][-1],
+            self._gapB_matrix[-1][-1]
+        )
+
+        # Start at the bottom right and continue until the top left is reached.
+        matrix_index = (len(self._seqA), len(self._seqB))
+        while matrix_index != (0,0):
+            # Sequence values are one less than the matrix index because of the
+            # additional matrix row/col.
+            a_index = matrix_index[0] - 1
+            b_index = matrix_index[1] - 1
+            
+            # Look at the three values in the current cell.
+            align_val = self._align_matrix[matrix_index[0]][matrix_index[1]]
+            gap_a_val = self._gapA_matrix[matrix_index[0]][matrix_index[1]]
+            gap_b_val = self._gapB_matrix[matrix_index[0]][matrix_index[1]]
+
+            # Take the maximum value as indication of what direction to move.
+            # Also, as the function progresses, append to the sequences.
+            if align_val >= max(gap_a_val, gap_b_val):
+                # Case align: move diagonal, match/mismatch.
+                self.seqA_align = self._seqA[a_index] + self.seqA_align
+                self.seqB_align = self._seqB[b_index] + self.seqB_align
+                matrix_index = (matrix_index[0] - 1, matrix_index[1] - 1)
+            elif gap_a_val >= max(gap_b_val, align_val):
+                # Case gap (A): make a gap for A sequence, move up a row.
+                self.seqA_align = self._seqA[a_index] + self.seqA_align
+                self.seqB_align = '-' + self.seqB_align
+                matrix_index = (matrix_index[0] - 1, matrix_index[1])
+            elif gap_b_val >= max(gap_a_val, align_val):
+                # Case gap (B): make a gap for B sequence, move down a col.
+                self.seqA_align = '-' + self.seqA_align
+                self.seqB_align = self._seqB[b_index] + self.seqB_align
+                matrix_index = (matrix_index[0], matrix_index[1] - 1)
+        # Return the backtracing work.
         return (self.alignment_score, self.seqA_align, self.seqB_align)
 
 
